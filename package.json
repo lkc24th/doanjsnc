@@ -1,9 +1,11 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Tram Huong Backend API",
+  "main": "server/app.js",
   "scripts": {
+    "start": "node server/app.js",
+    "dev": "node --watch server/app.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

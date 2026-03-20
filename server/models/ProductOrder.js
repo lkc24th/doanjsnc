@@ -1,6 +1,6 @@
-// đóng vai trò giỏ hàng đã thanh toán
+// đóng vai trò giỏ hàng đã thanh toán//ko cần
 const {DataTypes} = require("sequelize");
-const sequelize = require(".../config/db");
+const sequelize = require("../config/db");
 
 const ProductOrder = sequelize.define("ProductOrder", {
     id_order: {

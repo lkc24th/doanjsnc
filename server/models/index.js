@@ -24,7 +24,7 @@
 // module.exports = {User, Product, Category, Order, Product, ProductOrder, sequelize};
 
 // models/index.js
-const User = require("./User");
+const User = require("./User");//import model
 const Product = require("./Product");
 const Order = require("./Order");
 const Category = require("./Category");
