@@ -37,12 +37,12 @@ router.post('/products', productCtrl.createProducts);
 router.put('/products/:id', productCtrl.updateProduct);
 // router.put('/products/:id', verifyToken, isAdmin, productCtrl.updateProduct);
 router.patch('/products/:id/restore', verifyToken, isAdmin, productCtrl.restoreProduct);//khôi phục sp đã xoá mềm
-router.delete('/products/:id',productCtrl.deleteProduct);
+router.delete('/products/:id', productCtrl.deleteProduct);
 // router.delete('/products/:id', verifyToken, isAdmin, productCtrl.deleteProduct);
 
 // ========== Order Routes ==========
 // User: Lấy đơn hàng của mình
-router.get('/orders',orderCtrl.getUserOrders);
+router.get('/orders', orderCtrl.getUserOrders);
 // router.get('/orders', verifyToken, orderCtrl.getUserOrders);
 // User: Tạo đơn hàng mới
 router.post('/orders', orderCtrl.createOrder);
@@ -67,6 +67,7 @@ router.post('/users', verifyToken, isAdmin, authCtrl.register); // thêm user m�
 router.get('/users', verifyToken, isAdmin, authCtrl.getAllUsers);//in ra hết user
 router.get('/users/deleted', verifyToken, isAdmin, authCtrl.getDeletedUsers);//ds user đã xóa mềm
 router.get('/users/:id', verifyToken, isAdmin, authCtrl.getUserById);//lấy user theo id
+router.put('/users/:id', verifyToken, isAdmin, authCtrl.updateUser); // Cập nhật thông tin user
 router.patch('/users/restore', verifyToken, isAdmin, authCtrl.getDeletedUsers);//lấy danh sách user đã xóa mềm (không cần id)
 router.delete('/users/:id', verifyToken, isAdmin, authCtrl.deleteUser);//xoá mềm user
 

@@ -1,5 +1,4 @@
-const { Product, Category } = require("../models");
-const { Op, fn, col, where } = require('sequelize');
+const prisma = require("../config/db");
 
 const normalizeRestoreChoice = (value) => {
     if (value === true) return true;
@@ -40,8 +39,8 @@ const buildProductPayload = (body = {}) => {
     const payload = {};
 
     if (body.product_name !== undefined) payload.product_name = body.product_name;
-    if (body.product_price !== undefined) payload.product_price = body.product_price;
-    if (body.id_category !== undefined) payload.id_category = body.id_category;
+    if (body.product_price !== undefined) payload.product_price = parseInt(body.product_price);
+    if (body.id_category !== undefined) payload.id_category = parseInt(body.id_category);
 
     const normalizedStatus = normalizeStatus(body.product_status ?? body.status);
     if (normalizedStatus !== undefined) {
@@ -54,15 +53,15 @@ const buildProductPayload = (body = {}) => {
 // Lấy tất cả sản phẩm
 exports.getAllProducts = async (req, res) => {
     try {
-        const where = {};
+        const where = { deletedAt: null };
         const normalizedStatus = normalizeStatus(req.query.status ?? req.query.product_status);
         if (normalizedStatus !== undefined) {
             where.product_status = normalizedStatus;
         }
 
-        const products = await Product.findAll({
+        const products = await prisma.product.findMany({
             where,
-            include: [{ model: Category, attributes: ['category_name'] }]
+            include: { category: { select: { category_name: true } } }
         });
         res.json(products);
     } catch (error) {
@@ -74,8 +73,9 @@ exports.getAllProducts = async (req, res) => {
 exports.getProductById = async (req, res) => {
     try {
         const { id } = req.params;
-        const product = await Product.findByPk(id, {
-            include: [{ model: Category, attributes: ['category_name'] }]
+        const product = await prisma.product.findFirst({
+            where: { id_product: parseInt(id), deletedAt: null },
+            include: { category: { select: { category_name: true } } }
         });
         if (!product) {
             return res.status(404).json({ message: "Không tìm thấy sản phẩm" });
@@ -85,8 +85,6 @@ exports.getProductById = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 };
-
-
 
 // Tạo sản phẩm mới
 exports.createProducts = async (req, res) => {
@@ -101,9 +99,8 @@ exports.createProducts = async (req, res) => {
         }
         payload.product_name = productName;
 
-        const existingProduct = await Product.findOne({
-            paranoid: false,
-            where: where(fn('LOWER', col('product_name')), productName.toLowerCase())
+        const existingProduct = await prisma.product.findFirst({
+            where: { product_name: productName }
         });
 
         if (existingProduct && !existingProduct.deletedAt) {
@@ -123,15 +120,20 @@ exports.createProducts = async (req, res) => {
         }
 
         if (existingProduct && existingProduct.deletedAt && wantsRestore) {
-            await existingProduct.restore();
-            await existingProduct.update(payload);
+            payload.deletedAt = null;
+            const updatedProduct = await prisma.product.update({
+                where: { id_product: existingProduct.id_product },
+                data: payload
+            });
             return res.status(200).json({
                 message: 'Khôi phục sản phẩm thành công!',
-                product: existingProduct
+                product: updatedProduct
             });
         }
 
-        const newProduct = await Product.create(payload);
+        const newProduct = await prisma.product.create({
+            data: payload
+        });
         res.status(201).json(newProduct);
     } catch (error) {
         res.status(400).json({ message: error.message });
@@ -148,15 +150,20 @@ exports.updateProduct = async (req, res) => {
             return res.status(400).json({ message: "Không có dữ liệu hợp lệ để cập nhật" });
         }
 
-        const [updated] = await Product.update(payload, {
-            where: { id_product: id }
+        const product = await prisma.product.findFirst({
+            where: { id_product: parseInt(id), deletedAt: null }
         });
-        if (updated) {
-            const updatedProduct = await Product.findByPk(id);
-            res.json(updatedProduct);
-        } else {
-            res.status(404).json({ message: "Không tìm thấy sản phẩm" });
+
+        if (!product) {
+            return res.status(404).json({ message: "Không tìm thấy sản phẩm" });
         }
+
+        const updatedProduct = await prisma.product.update({
+            where: { id_product: parseInt(id) },
+            data: payload
+        });
+        
+        res.json(updatedProduct);
     } catch (error) {
         res.status(400).json({ message: error.message });
     }
@@ -166,12 +173,18 @@ exports.updateProduct = async (req, res) => {
 exports.deleteProduct = async (req, res) => {
     try {
         const { id } = req.params;
-        const product = await Product.findByPk(id);
+        const product = await prisma.product.findFirst({
+            where: { id_product: parseInt(id), deletedAt: null }
+        });
+
         if (!product) {
             return res.status(404).json({ message: "Không tìm thấy sản phẩm" });
         }
 
-        await product.destroy();
+        await prisma.product.update({
+            where: { id_product: parseInt(id) },
+            data: { deletedAt: new Date() }
+        });
         res.json({ message: "Xóa mềm sản phẩm thành công" });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -182,16 +195,16 @@ exports.deleteProduct = async (req, res) => {
 exports.getProductsByCategory = async (req, res) => {
     try {
         const { categoryId } = req.params;
-        const where = { id_category: categoryId };
+        const where = { id_category: parseInt(categoryId), deletedAt: null };
 
         const normalizedStatus = normalizeStatus(req.query.status ?? req.query.product_status);
         if (normalizedStatus !== undefined) {
             where.product_status = normalizedStatus;
         }
 
-        const products = await Product.findAll({
+        const products = await prisma.product.findMany({
             where,
-            include: [{ model: Category, attributes: ['category_name'] }]
+            include: { category: { select: { category_name: true } } }
         });
         res.json(products);
     } catch (error) {
@@ -202,14 +215,13 @@ exports.getProductsByCategory = async (req, res) => {
 // Lấy danh sách sản phẩm đã xóa mềm
 exports.getDeletedProducts = async (req, res) => {
     try {
-        const products = await Product.findAll({
-            paranoid: false,
+        const products = await prisma.product.findMany({
             where: {
                 deletedAt: {
-                    [Op.not]: null
+                    not: null
                 }
             },
-            include: [{ model: Category, attributes: ['category_name'] }]
+            include: { category: { select: { category_name: true } } }
         });
 
         res.json(products);
@@ -222,7 +234,9 @@ exports.getDeletedProducts = async (req, res) => {
 exports.restoreProduct = async (req, res) => {
     try {
         const { id } = req.params;
-        const product = await Product.findByPk(id, { paranoid: false });
+        const product = await prisma.product.findFirst({
+            where: { id_product: parseInt(id) }
+        });
 
         if (!product) {
             return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
@@ -232,7 +246,10 @@ exports.restoreProduct = async (req, res) => {
             return res.status(400).json({ message: 'Sản phẩm chưa bị xóa mềm' });
         }
 
-        await product.restore();
+        await prisma.product.update({
+            where: { id_product: parseInt(id) },
+            data: { deletedAt: null }
+        });
         res.json({ message: 'Khôi phục sản phẩm thành công' });
     } catch (error) {
         res.status(500).json({ message: error.message });

@@ -1,7 +1,6 @@
-const bcrypt = require('bcrypt');//là thư viện,Hash (mã hóa một chiều) mật khẩu của người dùng trước khi lưu vào database.
-const jwt = require('jsonwebtoken');// là thư viện
-const { User } = require('../models');
-const { Op, fn, col, where } = require('sequelize');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const prisma = require('../config/db');
 
 const normalizeRestoreChoice = (value) => {
     if (value === true) return true;
@@ -28,10 +27,9 @@ exports.register = async (req, res) => {
             });
         }
 
-        // Kiểm tra username đã tồn tại, bao gồm cả bản ghi đã xóa mềm
-        const existingUser = await User.findOne({
-            paranoid: false,
-            where: where(fn('LOWER', col('username')), normalizedUsername.toLowerCase())
+        // Kiểm tra username đã tồn tại, Prisma trả luôn cả xóa mềm (vì không hỗ trợ mặc định như sequelize)
+        const existingUser = await prisma.user.findFirst({
+            where: { username: normalizedUsername }
         });
 
         if (existingUser && !existingUser.deletedAt) {
@@ -51,36 +49,41 @@ exports.register = async (req, res) => {
         }
 
         // Mã hóa mật khẩu
-        const saltRounds = 10;//10 kí tự salt
-        const hashedPassword = await bcrypt.hash(password, saltRounds);//gọi hàm
+        const saltRounds = 10;
+        const hashedPassword = await bcrypt.hash(password, saltRounds);
 
         if (existingUser && existingUser.deletedAt && wantsRestore) {
-            await existingUser.restore();
-            await existingUser.update({
-                username: normalizedUsername,
-                password: hashedPassword,
-                phone,
-                address,
-                role: role || existingUser.role || 'Customer'
+            const updatedUser = await prisma.user.update({
+                where: { id_user: existingUser.id_user },
+                data: {
+                    username: normalizedUsername,
+                    password: hashedPassword,
+                    phone: phone || existingUser.phone,
+                    address: address || existingUser.address,
+                    role: role || existingUser.role || 'Customer',
+                    deletedAt: null // Restore
+                }
             });
 
             return res.status(200).json({
                 message: 'Khôi phục tài khoản thành công!',
                 user: {
-                    id_user: existingUser.id_user,
-                    username: existingUser.username,
-                    role: existingUser.role
+                    id_user: updatedUser.id_user,
+                    username: updatedUser.username,
+                    role: updatedUser.role
                 }
             });
         }
 
         // Tạo user mới
-        const newUser = await User.create({
-            username: normalizedUsername,
-            password: hashedPassword,
-            phone,
-            address,
-            role: role || 'Customer' // Mặc định là Customer
+        const newUser = await prisma.user.create({
+            data: {
+                username: normalizedUsername,
+                password: hashedPassword,
+                phone,
+                address,
+                role: role || 'Customer'
+            }
         });
 
         res.status(201).json({
@@ -108,7 +111,12 @@ exports.login = async (req, res) => {
         }
 
         // Tìm user theo username
-        const user = await User.findOne({ where: { username } });
+        const user = await prisma.user.findFirst({ 
+            where: { 
+                username,
+                deletedAt: null 
+            } 
+        });
         if (!user) {
             return res.status(401).json({ message: 'Tên đăng nhập không tồn tại!' });
         }
@@ -129,9 +137,9 @@ exports.login = async (req, res) => {
             { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
         );
 
-        res.json({//res
-            message: 'Đăng nhập thành công!',// tar về token
-            token,// giá trị
+        res.json({
+            message: 'Đăng nhập thành công!',
+            token,
             user: {
                 id_user: user.id_user,
                 username: user.username,
@@ -146,9 +154,20 @@ exports.login = async (req, res) => {
 // Lấy thông tin user hiện tại
 exports.getMe = async (req, res) => {
     try {
-        const user = await User.findByPk(req.user.id_user, {
-            attributes: ['id_user', 'username', 'phone', 'address', 'role']
+        const user = await prisma.user.findFirst({
+            where: {
+                id_user: req.user.id_user,
+                deletedAt: null
+            },
+            select: {
+                id_user: true,
+                username: true,
+                phone: true,
+                address: true,
+                role: true
+            }
         });
+        
         if (!user) {
             return res.status(404).json({ message: 'User không tồn tại!' });
         }
@@ -161,9 +180,18 @@ exports.getMe = async (req, res) => {
 // Admin: Lấy toàn bộ danh sách user (không bao gồm user đã xóa mềm)
 exports.getAllUsers = async (req, res) => {
     try {
-        const users = await User.findAll({
-            attributes: ['id_user', 'username', 'phone', 'address', 'role', 'createdAt', 'updatedAt'],
-            order: [['id_user', 'ASC']]
+        const users = await prisma.user.findMany({
+            where: { deletedAt: null },
+            select: {
+                id_user: true, 
+                username: true, 
+                phone: true, 
+                address: true, 
+                role: true, 
+                createdAt: true, 
+                updatedAt: true
+            },
+            orderBy: { id_user: 'asc' }
         });
 
         res.json(users);
@@ -176,8 +204,20 @@ exports.getAllUsers = async (req, res) => {
 exports.getUserById = async (req, res) => {
     try {
         const { id } = req.params;
-        const user = await User.findByPk(id, {
-            attributes: ['id_user', 'username', 'phone', 'address', 'role', 'createdAt', 'updatedAt']
+        const user = await prisma.user.findFirst({
+            where: { 
+                id_user: parseInt(id),
+                deletedAt: null
+            },
+            select: {
+                id_user: true, 
+                username: true, 
+                phone: true, 
+                address: true, 
+                role: true, 
+                createdAt: true, 
+                updatedAt: true
+            }
         });
 
         if (!user) {
@@ -206,13 +246,17 @@ exports.protectedExample = async (req, res) => {
 exports.deleteUser = async (req, res) => {
     try {
         const { id } = req.params;
-        const user = await User.findByPk(id);
+        const user = await prisma.user.findFirst({ where: { id_user: parseInt(id), deletedAt: null }});
 
         if (!user) {
             return res.status(404).json({ message: 'User không tồn tại!' });
         }
 
-        await user.destroy();
+        await prisma.user.update({
+            where: { id_user: parseInt(id) },
+            data: { deletedAt: new Date() }
+        });
+        
         res.json({ message: 'Xóa mềm user thành công!' });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -222,14 +266,22 @@ exports.deleteUser = async (req, res) => {
 // Lấy danh sách user đã xóa mềm
 exports.getDeletedUsers = async (req, res) => {
     try {
-        const users = await User.findAll({
-            paranoid: false,
+        const users = await prisma.user.findMany({
             where: {
                 deletedAt: {
-                    [Op.not]: null
+                    not: null
                 }
             },
-            attributes: ['id_user', 'username', 'phone', 'address', 'role', 'createdAt', 'updatedAt', 'deletedAt']
+            select: {
+                id_user: true, 
+                username: true, 
+                phone: true, 
+                address: true, 
+                role: true, 
+                createdAt: true, 
+                updatedAt: true, 
+                deletedAt: true
+            }
         });
 
         res.json(users);
@@ -242,18 +294,93 @@ exports.getDeletedUsers = async (req, res) => {
 exports.restoreUser = async (req, res) => {
     try {
         const { id } = req.params;
-        const user = await User.findByPk(id, { paranoid: false });
+        const user = await prisma.user.findFirst({ 
+            where: { id_user: parseInt(id) } 
+        });
+
+        if (!user || !user.deletedAt) {
+            return res.status(404).json({ message: 'User không tồn tại hoặc chưa bị xóa mềm!' });
+        }
+
+        await prisma.user.update({
+            where: { id_user: parseInt(id) },
+            data: { deletedAt: null }
+        });
+        res.json({ message: 'Khôi phục user thành công!' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// Cập nhật thông tin user
+exports.updateUser = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const parsedId = parseInt(id);
+
+        if (isNaN(parsedId)) {
+            return res.status(400).json({ message: 'ID user không hợp lệ!' });
+        }
+
+        const { username, phone, address, role, password } = req.body || {};
+        
+        const user = await prisma.user.findFirst({
+            where: { id_user: parsedId, deletedAt: null }
+        });
 
         if (!user) {
             return res.status(404).json({ message: 'User không tồn tại!' });
         }
 
-        if (!user.deletedAt) {
-            return res.status(400).json({ message: 'User chưa bị xóa mềm!' });
+        const dataToUpdate = {};
+
+        if (username !== undefined && username.trim() !== '') {
+            const normalizedUsername = username.trim();
+            if (normalizedUsername !== user.username) {
+                const existingUser = await prisma.user.findFirst({
+                    where: { username: normalizedUsername }
+                });
+                if (existingUser) {
+                    return res.status(400).json({ message: 'Tên đăng nhập đã tồn tại!' });
+                }
+            }
+            dataToUpdate.username = normalizedUsername;
         }
 
-        await user.restore();
-        res.json({ message: 'Khôi phục user thành công!' });
+        if (phone !== undefined) dataToUpdate.phone = phone;
+        if (address !== undefined) dataToUpdate.address = address;
+        
+        if (role !== undefined) {
+             const validRoles = ['Admin', 'Employee', 'Customer'];
+             if (!validRoles.includes(role)) {
+                 return res.status(400).json({ message: 'Quyền (role) không hợp lệ! Vui lòng chọn: Admin, Employee, hoặc Customer.' });
+             }
+             dataToUpdate.role = role;
+        }
+
+        if (password) {
+             const saltRounds = 10;
+             dataToUpdate.password = await bcrypt.hash(password, saltRounds);
+        }
+
+        const updatedUser = await prisma.user.update({
+            where: { id_user: parsedId },
+            data: dataToUpdate,
+            select: {
+                id_user: true,
+                username: true,
+                phone: true,
+                address: true,
+                role: true,
+                createdAt: true,
+                updatedAt: true
+            }
+        });
+
+        res.json({
+            message: 'Cập nhật user thành công!',
+            user: updatedUser
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

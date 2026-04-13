@@ -9,10 +9,11 @@
 // import routes
 // 
 // chạy server
-require('dotenv').config();//Nạp thư viện dotenv vào dự án
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });//Nạp thư viện dotenv từ server/.env
 const express = require('express');
 const cors = require('cors');
-const { sequelize } = require('./models');
+const prisma = require('./config/db');
 const routes = require('./routes');
 
 const app = express();
@@ -40,16 +41,8 @@ app.use((err, req, res, next) => {
 // Kết nối database và khởi động server
 const startServer = async () => {
     try {
-        await sequelize.authenticate();
+        await prisma.$connect();
         console.log('Kết nối database thành công!');
-
-        // Sync models với database (chỉ dùng trong development)
-        // Sử dụng { alter: true } để cập nhật schema mà không mất dữ liệu
-        // Sử dụng { force: true } sẽ XÓA và tạo lại tất cả bảng
-        if (process.env.NODE_ENV !== 'production') {
-            await sequelize.sync({ alter: true });
-            console.log('Đồng bộ models thành công!');
-        }
 
         app.listen(PORT, () => {
             console.log(` Server đang chạy tại http://localhost:${PORT}`);
