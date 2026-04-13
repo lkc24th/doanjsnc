@@ -15,7 +15,13 @@ const Product = sequelize.define("Product", {
     },
     id_category: {
         type: DataTypes.INTEGER
+    },
+    product_status: {
+        type: DataTypes.BOOLEAN,////mysql đang thiếu
+        defaultValue: true  
     }
-    },{timestamps: false
+    },{
+    timestamps: true,
+    paranoid: true
 });
 module.exports = Product;

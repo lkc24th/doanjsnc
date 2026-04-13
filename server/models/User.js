@@ -23,7 +23,10 @@ const User = sequelize.define("User",{ //.define() là hàm dùng để:Định 
     },
     role:{
         type: DataTypes.ENUM("Admin", "Employee", "Customer"), defaultValue:"Customer"}//Nếu khi tạo user mà không truyền role, thì tự động gán là 'Customer'.
-    }, {timestamps: false});//ect cấu hình (options) truyền vào hàm .define() của Sequelize.
+    }, {
+        timestamps: true,
+        paranoid: true
+    });//ect cấu hình (options) truyền vào hàm .define() của Sequelize.
     
 module.exports = User;// xuất modul anyf ra ngoài để các file khác sd
     

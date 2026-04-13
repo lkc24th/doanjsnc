@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const {Order, ProductOrder, sequelize} = require("../models");
+const { Op } = require('sequelize');
 
 exports.createOrder = async (req, res) => {
     const t = await sequelize.transaction(); //trấnction đảm bảo toàn vẹ dữ liệu, bên này thì cộng bên kia vào, lỗi thì rollback(quay lại ban đầu)
@@ -96,6 +97,84 @@ exports.getAllOrders = async (req, res) => {
       order: [['order_date', 'DESC']]
     });
     res.json(orders);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Lấy chi tiết đơn hàng theo ID
+exports.getOrderById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const order = await Order.findByPk(id, {
+      include: [
+        { model: require('../models/User'), attributes: ['username', 'phone', 'address'] },
+        { model: require('../models/Product'), through: { attributes: ['product_quantity', 'product_price'] } }
+      ]
+    });
+
+    if (!order) {
+      return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+    }
+
+    res.json(order);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Xóa mềm đơn hàng
+exports.deleteOrder = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const order = await Order.findByPk(id);
+
+    if (!order) {
+      return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+    }
+
+    await order.destroy();
+    res.json({ message: 'Xóa mềm đơn hàng thành công' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Lấy danh sách đơn hàng đã xóa mềm
+exports.getDeletedOrders = async (req, res) => {
+  try {
+    const orders = await Order.findAll({
+      paranoid: false,
+      where: {
+        deletedAt: {
+          [Op.not]: null
+        }
+      },
+      order: [['deletedAt', 'DESC']]
+    });
+
+    res.json(orders);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Khôi phục đơn hàng đã xóa mềm
+exports.restoreOrder = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const order = await Order.findByPk(id, { paranoid: false });
+
+    if (!order) {
+      return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+    }
+
+    if (!order.deletedAt) {
+      return res.status(400).json({ message: 'Đơn hàng chưa bị xóa mềm' });
+    }
+
+    await order.restore();
+    res.json({ message: 'Khôi phục đơn hàng thành công' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

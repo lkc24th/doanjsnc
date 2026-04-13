@@ -21,6 +21,10 @@ const Order = sequelize.define('Order', {
         type: DataTypes.ENUM('Pending', 'Confirmed', 'Completed', 'Cancelled'),
         defaultValue: 'Pending'
     }
-}, { tableName: 'orders' });
+}, {
+    tableName: 'orders',
+    timestamps: true,
+    paranoid: true
+});
 
 module.exports = Order;
